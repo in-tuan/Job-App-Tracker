@@ -8,7 +8,7 @@ function scrapeJobs() {
     
     let cleanStatus = "Pending";
     if ((jobStatus === "Interview Selections Complete" || jobStatus === "Interview Complete"
-        || jobStatus === "Emp Rankings Finalized")
+        || jobStatus === "Emp Rankings Finalized" || jobStatus === "Filled")
          && appStatus === "Applied") {
         cleanStatus = "Not Selected";
     } else if (appStatus === "Not Selected") {

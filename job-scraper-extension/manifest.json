@@ -5,7 +5,8 @@
     "manifest_version": 3,
     "permissions": [
         "scripting",
-        "activeTab"
+        "activeTab",
+        "storage"
     ],
     "host_permissions": ["https://waterlooworks.uwaterloo.ca/*"],
     "action": {

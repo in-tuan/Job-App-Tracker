@@ -1,5 +1,16 @@
 let userToken = null;
 
+async function init() {
+  const stored = await chrome.storage.local.get(['supabase_token', 'token_expiry']);
+  
+  if (stored.supabase_token && stored.token_expiry && Date.now() < stored.token_expiry) {
+    userToken = stored.supabase_token;
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('mainSection').style.display = 'block';
+    document.getElementById('status').innerText = "Ready to sync!";
+  }
+}
+
 document.getElementById('loginBtn').addEventListener('click', async () => {
   const email = document.getElementById('email').value;
   const password = document.getElementById('password').value;
@@ -13,6 +24,13 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   const data = await res.json();
   if (data.access_token) {
     userToken = data.access_token;
+
+    const expiryMs = Date.now() + (data.expires_in ?? 3600) * 1000;
+    await chrome.storage.local.set({
+      supabase_token: data.access_token,
+      token_expiry: expiryMs
+    });
+
     document.getElementById('loginSection').style.display = 'none';
     document.getElementById('mainSection').style.display = 'block';
     document.getElementById('status').innerText = "Logged in!";
@@ -36,7 +54,6 @@ document.getElementById('syncBtn').addEventListener('click', async () => {
   // 2. Send message to content.js
   chrome.tabs.sendMessage(tab.id, { action: "get_jobs" }, async (response) => {
     
-    // Handle the "Receiving end does not exist" error
     if (chrome.runtime.lastError) {
       console.error("Popup Error:", chrome.runtime.lastError.message);
       statusEl.innerText = "Error: Refresh the Job Board page.";
@@ -45,9 +62,14 @@ document.getElementById('syncBtn').addEventListener('click', async () => {
 
     if (response && response.data) {
       statusEl.innerText = `Found ${response.data.length} jobs. Syncing...`;
-      
+
       try {
-        const result = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/applications?on_conflict=job_id`, {
+        const jobsWithTimestamp = response.data.map(job => ({
+          ...job,
+          last_synced_at: new Date().toISOString()
+        }));
+
+        const result = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/applications?on_conflict=job_id&columns=job_id,job_title,organization,app_status,job_status,location,date_submitted,clean_status,source,last_synced_at`, {
           method: 'POST',
           headers: {
             'apikey': CONFIG.SUPABASE_KEY,
@@ -55,7 +77,7 @@ document.getElementById('syncBtn').addEventListener('click', async () => {
             'Content-Type': 'application/json',
             'Prefer': 'resolution=merge-duplicates, return=minimal'
           },
-          body: JSON.stringify(response.data)
+          body: JSON.stringify(jobsWithTimestamp)
         });
 
         if (result.ok) {
@@ -72,3 +94,5 @@ document.getElementById('syncBtn').addEventListener('click', async () => {
     }
   });
 });
+
+init();
