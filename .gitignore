@@ -18,6 +18,9 @@ job-dashboard/.next/
 job-dashboard/out/
 job-dashboard/build/
 
+# extension
+job-scraper-extension/config.js
+
 # production
 /build
 
