@@ -11,6 +11,8 @@ export default function Dashboard() {
   const [ apps, setApps ] = useState<any[]>([]);
   const [ filter, setFilter ] = useState("All");
   const [ loading, setLoading ] = useState(true);
+  const [ searchTerm, setSearchTerm ] = useState("");
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   const [ currentPage, setCurrentPage ] = useState(0); // range is 0 based indexing
   const [ totalCount, setTotalCount ] = useState(0);
@@ -46,7 +48,7 @@ export default function Dashboard() {
 
   useEffect(() => {
       fetchApplications();
-  }, [currentPage, filter]); // re-run dep on changes to
+  }, [currentPage, filter, sortOrder]); // re-run dep on changes to
 
   async function fetchGlobalStats() {
     const { data, error } = await supabase
@@ -74,16 +76,25 @@ export default function Dashboard() {
     let query = supabase
       .from("applications")
       .select("*", {count: "exact"})
-      .order("date_submitted", {ascending: false})
-      .range(from, to);
+
+    if (searchTerm && searchTerm.trim() !== "") {
+      const s = `%${searchTerm.trim()}%`;
+      query = query.or(
+        `job_title.ilike.${s},organization.ilike.${s}`
+      );
+    }
 
     if (filter === "Internal") query = query.eq("source", "internal");
     if (filter === "External") query = query.eq("source", "external");
     if (filter === "Not Selected") query = query.eq("clean_status", "Not Selected");
 
-    const { data, error, count } = await query;
+    const { data, error, count } = await query.order(
+      "date_submitted", 
+      { ascending: sortOrder === 'asc',
+        nullsFirst: false
+      }).range(from, to);
 
-    if (error) { console.error(error); }
+    if (error) { console.error(error); }  
     if (data) { setApps(data) };
     if (count != null) { setTotalCount(count); }
 
@@ -188,6 +199,31 @@ export default function Dashboard() {
           <StatCard label="Active (Pending)" value={stats.active} color="text-slate-600" />
         </div>
 
+        {/* Search */}
+        <div className="mb-6">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setCurrentPage(0);
+              fetchApplications();
+            }}
+            className="relative flex-1 max-w-md">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <button type="submit" className="focus:outline-none">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+              </button>
+            </span>
+
+            <input type="text" placeholder="Search company or role..."
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+              value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </form>
+        </div>
+
         {/* Filters */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           {["All", "Internal", "External", "Not Selected"].map((f) => (
@@ -216,7 +252,15 @@ export default function Dashboard() {
                 <th className="p-4 text-xs font-bold uppercase tracking-wider text-slate-500">Job Title / Org</th>
                 <th className="p-4 text-xs font-bold uppercase tracking-wider text-slate-500">Status</th>
                 <th className="p-4 text-xs font-bold uppercase tracking-wider text-slate-500">Location</th>
-                <th className="p-4 text-xs font-bold uppercase tracking-wider text-slate-500">Date Applied</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <button onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="flex items-center gap-1 hover:text-indigo-600 transition">
+                    Date Applied
+                    <svg className={`w-4 h-4 transition-transform ${sortOrder === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </th>
                 <th className="p-4 text-xs font-bold uppercase tracking-wider text-slate-500">Actions</th>
               </tr>
             </thead>
