@@ -1,0 +1,21 @@
+{
+    "name": "Job App Scraper",
+    "description": "Scrape job postings applied to relay to dashboard.",
+    "version": "1.0",
+    "manifest_version": 3,
+    "permissions": [
+        "scripting",
+        "activeTab",
+        "storage"
+    ],
+    "host_permissions": ["https://waterlooworks.uwaterloo.ca/*"],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "content_scripts": [
+    {
+      "matches": ["https://waterlooworks.uwaterloo.ca/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

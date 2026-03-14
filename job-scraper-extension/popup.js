@@ -1,0 +1,98 @@
+let userToken = null;
+
+async function init() {
+  const stored = await chrome.storage.local.get(['supabase_token', 'token_expiry']);
+  
+  if (stored.supabase_token && stored.token_expiry && Date.now() < stored.token_expiry) {
+    userToken = stored.supabase_token;
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('mainSection').style.display = 'block';
+    document.getElementById('status').innerText = "Ready to sync!";
+  }
+}
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  
+  const res = await fetch(`${CONFIG.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { 'apikey': CONFIG.SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  
+  const data = await res.json();
+  if (data.access_token) {
+    userToken = data.access_token;
+
+    const expiryMs = Date.now() + (data.expires_in ?? 3600) * 1000;
+    await chrome.storage.local.set({
+      supabase_token: data.access_token,
+      token_expiry: expiryMs
+    });
+
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('mainSection').style.display = 'block';
+    document.getElementById('status').innerText = "Logged in!";
+  } else {
+    document.getElementById('status').innerText = "Login failed.";
+  }
+});
+
+document.getElementById('syncBtn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('status');
+  statusEl.innerText = "Connecting...";
+
+  // 1. Get the current active tab
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  if (!tab) {
+    statusEl.innerText = "No active tab found.";
+    return;
+  }
+
+  // 2. Send message to content.js
+  chrome.tabs.sendMessage(tab.id, { action: "get_jobs" }, async (response) => {
+    
+    if (chrome.runtime.lastError) {
+      console.error("Popup Error:", chrome.runtime.lastError.message);
+      statusEl.innerText = "Error: Refresh the Job Board page.";
+      return;
+    }
+
+    if (response && response.data) {
+      statusEl.innerText = `Found ${response.data.length} jobs. Syncing...`;
+
+      try {
+        const jobsWithTimestamp = response.data.map(job => ({
+          ...job,
+          last_synced_at: new Date().toISOString()
+        }));
+
+        const result = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/applications?on_conflict=job_id&columns=job_id,job_title,organization,app_status,job_status,location,date_submitted,clean_status,source,last_synced_at`, {
+          method: 'POST',
+          headers: {
+            'apikey': CONFIG.SUPABASE_KEY,
+            'Authorization': `Bearer ${userToken}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates, return=minimal'
+          },
+          body: JSON.stringify(jobsWithTimestamp)
+        });
+
+        if (result.ok) {
+          statusEl.innerText = "Sync Success!";
+        } else {
+          const errBody = await result.text();
+          statusEl.innerText = "DB Error. Check console.";
+          console.error("Supabase Error:", errBody);
+        }
+      } catch (err) {
+        statusEl.innerText = "Network Error.";
+        console.error(err);
+      }
+    }
+  });
+});
+
+init();
